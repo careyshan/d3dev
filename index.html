@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Dynamic Size Example</title>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://unpkg.com/d3-boxes@0.0.2/build/d3-boxes.js"></script>
+    <script src="map.js"></script>
+    <script src="boxPlot.js"></script>
+    <script src="lineChart.js"></script>
+    <script src="tabulate.js"></script>
+    <script src="https://unpkg.com/topojson@3.0.2/dist/topojson.min.js"></script>
+    <style>
+
+      /* Make the chart container fill the page using CSS. */
+      #chart {
+        position: fixed;
+        left: 0px;
+        right: 0px;
+        top: 0px;
+        bottom: 0px;
+      }
+      div#tableDiv{
+        min-height: 0;
+        max-height: 100%;
+        overflow: scroll;
+        overflow-x: hidden;
+        }
+      td, th{
+          border: 1px solid #ddd;
+          padding: 8px;
+      }
+      
+    </style>
+  </head>
+  <body>
+
+    <div id="chart"></div>
+    <div id="map-plot"></div>
+    <div id="boxPlotPlotDiv"></div>
+    <div id="lineChartDiv"></div>
+    <div id="tableDiv"></div>
+    <script>
+
+      var chartDiv = document.getElementById("chart");
+      //var svg = d3.select(chartDiv).append("svg");
+      var color = d3.scaleOrdinal().range(d3.schemeCategory10);
+
+
+      function drawBox(name, box){
+        const x = box.x;
+        const y = box.y;
+        const width = box.width;
+        const height = box.height;
+
+        // Setup a group for this box.
+
+        var svg = d3.select(chartDiv).selectAll('.' + name).data([null]);
+        var svgEnter = svg.enter().append('svg').attr('class', name);
+        svgEnter.merge(svg)
+          .style('position', 'fixed')
+          .style('left', x + 'px')
+          .style('top', y + 'px')
+          .attr("width", width)
+          .attr("height", height);
+
+        // Draw a box.
+        svgEnter
+          .append('rect')
+            .attr('fill', color(name))
+            .attr('stroke', 'white')
+          .merge(svg.select('rect'))
+            .attr('width', width)
+            .attr('height', height);
+
+        // Draw an X to show the size of the box.
+        var lines = svgEnter.merge(svg).selectAll("line").data([
+          {x1: 0, y1: 0, x2: width, y2: height},
+          {x1: 0, y1: height, x2: width, y2: 0}
+        ]);
+        lines
+          .enter().append("line")
+            .style("stroke-width", 5)
+            .style("stroke-opacity", 0.4)
+            .style("stroke", "black")
+          .merge(lines)
+            .attr("x1", function (d) { return d.x1; })
+            .attr("y1", function (d) { return d.y1; })
+            .attr("x2", function (d) { return d.x2; })
+            .attr("y2", function (d) { return d.y2; })
+        ;
+
+        // Add a text label.
+        var text = svgEnter
+          .append('text')
+            .style('font-size', '5em')
+            .style('font-family', 'sans-serif')
+            .style('text-anchor', 'middle')
+            .style('alignment-baseline', 'middle')
+            .attr('fill', 'white')
+          .merge(svg.select('text'))
+            .attr('x', width / 2)
+            .attr('y', height / 2)
+            .text(name);
+      }
+
+      function redraw(counties,data,state,update){
+
+        // Extract the width and height that was computed by CSS.
+        var width = chartDiv.clientWidth;
+        var height = chartDiv.clientHeight;
+
+        var layout = {
+          orientation: "horizontal",
+          children: [
+            "A",
+            {
+              orientation: "vertical",
+              children: [
+                "B",
+                "C"
+              ],
+              size: 2 // Make this layer have a size weight of 2 (default is 1)
+            },
+            "D"
+          ]
+        };
+
+        var sizes = {
+          A: {
+            size: 2 // Make the "A" box have a size weight of 2 (default is 1)
+          },
+          D: {
+            size: 2
+          }
+        };
+
+        var box = {
+          width: width,
+          height: height
+        };
+
+        var boxes = d3.boxes(layout, sizes, box);
+
+        // Have a look in the console!
+        //console.log(boxes);
+
+        Object.keys(boxes).forEach(function (name) {
+          if(name == "A"){
+            // Render the map.
+            //console.log(boxes[name]);
+
+            const mapPlotDiv = d3.select("#map-plot")
+              .style('position', 'fixed')
+              .style('left', boxes[name].x + 'px')
+              .style('top', boxes[name].y + 'px');
+
+            mapChart(mapPlotDiv, {
+              width: boxes[name].width,
+              height: boxes[name].height,
+              data: counties.features,
+              margin: {top: 20, right: 20, bottom: 30, left: 50},
+              numOfState: 26,
+              scaleOfMap: 7000,
+              fill:"rgb(220,220,220)",
+              stroke:"rgb(0,0,0)",
+              strokeWidth:"2",
+              onCountyClick: function(county) {
+                state.county = county;
+                update();
+              }
+            });
+          }else if(name==="B"){
+           const boxPlotPlotDiv = d3.select("#boxPlotPlotDiv")
+              .style('position', 'fixed')
+              .style('left', boxes[name].x + 'px')
+              .style('top', boxes[name].y + 'px');
+           const filteredData = filterByCounty(data, state.county);
+
+          boxPlot(boxPlotPlotDiv, {
+            width: boxes[name].width,
+            height: boxes[name].height,
+            data: filteredData,
+            duration: 0,
+            margin: {top: 20, right: 20, bottom: 30, left: 50},
+            xValue: function (d){ return d.element; },
+            yValue: function (d){ return d.value; }
+          });
+
+          }else if(name==="C"){
+           const lineChartDiv = d3.select("#lineChartDiv")
+              .style('position', 'fixed')
+              .style('left', boxes[name].x + 'px')
+              .style('top', boxes[name].y + 'px');
+           const filteredData = filterByCounty(data, state.county);
+
+         lineChart(lineChartDiv, {
+            width: boxes[name].width,
+            height: boxes[name].height,
+            data: filteredData,
+            margin: {top: 20, right: 20, bottom: 30, left: 50},
+            xValue: function (d){ return d.Date; },
+            yValue: function (d){ return d.value; },
+            lineValue: function (d){ return d.element; },
+            onPointHover: function(d) {
+              state.selectedRow = d;
+              update();
+              //console.log(d);
+            }
+//             onPointHover: function(county,date,element,value) {
+//               selectedRow.County = county;
+//               selectedRow.Date = date;
+//               selectedRow.element = element;
+//               selectedRow.value = value;
+//               return function(){
+//                 let rowSelect = selectedRow;
+//                 return rowSelect;
+//               };
+//             }
+          });
+
+//console.log(rowSelect);
+
+
+
+          }else if(name==="D"){
+           const tableDiv = d3.select("#tableDiv")
+            .style('position', 'fixed')
+            .style('left', boxes[name].x + 'px')
+            .style('top', boxes[name].y + 'px');
+
+           const filteredData = filterByCounty(data, state.county);
+           const datatable = [];
+           //const formatTime = d3.timeFormat('%b %d, %Y');
+           const formatTime = d3.timeFormat('%m/%d/%Y');
+
+           let tabledata = filteredData.forEach(function(d){
+
+             datatable.push({
+               //Date: d.Date.toUTCString().split(' ').slice(0, 4).join(' '),
+               Date: formatTime(d.Date),
+               County: d.County,
+               element: d.element,
+               value: d.value
+              });
+           });
+ //            console.log(d.Date.toUTCString().split(' ').slice(4, 10).join(' ')
+           //console.log(datatable)
+
+         tabulate(tableDiv, {
+            data: filteredData,
+            rowSelection: state.selectedRow,
+            columns: ["Date", "County", "element","value"]
+          });
+          }else {
+            drawBox(name, boxes[name]);
+          }
+        });
+      }
+
+
+const parseTime = d3.timeParse('%B %Y');
+function parseRow(row) {
+  row.Date = parseTime(row.Date);
+  row.Cu = +row.Cu;
+  row.pH = +row.pH;
+  row.Mg = +row.Mg;
+  row.Co = +row.Co;
+  return row;
+}
+
+function processData(rawData){
+  //const elements = ["pH", "Mg", "Cu", "Co"];
+  const elements = ["Mg", "Cu", "Co"];
+
+  const data = [];
+  rawData.forEach(function (row){
+    elements.forEach(function (element) {
+      data.push({
+        Date: row.Date,
+        County: row.County,
+        element: element,
+        value: row[element]
+      });
+    });
+  });
+  data.sort(function (a, b){ return d3.ascending(a.Date, b.Date); });
+  return data;
+}
+
+function filterByCounty(data, county) {
+  return data.filter(function (d){
+    return d.County === county;
+  });
+}
+
+// function isSelectedRow(a,b){
+
+//   var aProps = Object.getOwnPropertyNames(a);
+//   var bProps = Object.getOwnPropertyNames(b);
+
+//   if (aProps.length != bProps.length){
+//     return false;
+//   }
+//   for (var i = 0; i < aProps.length; i++){
+//     console.log(aProps[i]);
+//     var propName = aProps[i];
+//     console.log(a[propName])
+//     if (a[propName] !== b[propName]){
+//       return false;
+//       }
+//   }
+//   return true;
+// }
+
+
+
+d3.csv('dummydata.csv', parseRow, function(rawData) {
+
+
+  // TODO add counties_simplified.json as a "Dataset", then add as reference
+
+    d3.json("Counties_WGS84.json", function(mapData){
+      const counties = topojson.feature(mapData, mapData.objects.Counties_WGS84_1);
+      const data = processData(rawData);
+      //console.log(data)
+      const state = {
+        county: "Cork",
+        selectedRow: null
+//         selectedRow: {
+//           County:"Cork",
+//           Date:new Date('Tue Jun 01 2004'),
+//           element:"Co",
+//           value:2.9075703296
+//         }
+      };
+
+//       const fibbonacci = function(n){
+//         //factorial(n)
+//         if (n === 1 || n === 0) {
+//           return n;
+//         }
+//         return fibbonacci(n - 1) + fibbonacci(n - 2);
+//       }
+
+//       console.log(fibbonacci(5))
+
+//       const factorial = function(n){
+//         //factorial(n)
+//         if (n === 1) {
+//           return 1;
+//         }
+//         console.log(n)
+//         return n * factorial(n - 1);
+//       }
+//       console.log(factorial(5))
+
+      const update = function () {
+        redraw(counties,data,state,update);
+      };
+
+      // Draw for the first time to initialize.
+      update();
+
+      // Redraw based on the new size whenever the browser window is resized.
+      window.addEventListener("resize", update);
+      // window.addEventListener("click", update);
+    })
+  });
+
+    </script>
+  </body>
+</html>
